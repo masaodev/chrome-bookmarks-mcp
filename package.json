@@ -1,0 +1,48 @@
+{
+  "name": "chrome-bookmarks-mcp",
+  "version": "0.1.0",
+  "description": "MCP server that lets Claude Code and other MCP clients read and write Chrome bookmarks via a companion Chrome extension",
+  "type": "module",
+  "bin": {
+    "chrome-bookmarks-mcp": "server/index.js"
+  },
+  "files": [
+    "server/index.js",
+    "README.md",
+    "README.ja.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node test/smoke.mjs",
+    "live": "node test/live.mjs",
+    "pack:extension": "node scripts/pack-extension.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "claude",
+    "claude-code",
+    "chrome",
+    "bookmarks",
+    "chrome-extension"
+  ],
+  "author": "masaodev",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/masaodev/chrome-bookmarks-mcp.git"
+  },
+  "homepage": "https://github.com/masaodev/chrome-bookmarks-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/masaodev/chrome-bookmarks-mcp/issues"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "ws": "^8.21.3",
+    "zod": "^4.6.4"
+  }
+}

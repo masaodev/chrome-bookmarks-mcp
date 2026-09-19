@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Chrome Bookmarks MCP Bridge",
+  "version": "0.1.0",
+  "description": "Bridges the chrome.bookmarks API to a local MCP server (chrome-bookmarks-mcp). Connects only to fixed ports on 127.0.0.1.",
+  "permissions": ["bookmarks", "alarms"],
+  "background": { "service_worker": "background.js" },
+  "action": {
+    "default_title": "Chrome Bookmarks MCP Bridge (badge = number of connected MCP servers)"
+  },
+  "icons": { "128": "icon128.png" }
+}

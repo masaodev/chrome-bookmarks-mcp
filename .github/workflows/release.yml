@@ -1,0 +1,28 @@
+name: Release
+
+# Pushing a tag like v0.1.0 creates a GitHub release with the extension zip attached.
+# npm publishing is done manually (`npm publish`) so that 2FA stays in the maintainer's hands.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run pack:extension
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+          generate_release_notes: true
