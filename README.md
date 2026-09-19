@@ -112,6 +112,7 @@ claude mcp add --scope user chrome-bookmarks -- node /path/to/chrome-bookmarks-m
 
 - MV3 service workers are suspended after ~30 s of inactivity, so the server sends an application-level ping every 20 s and the extension also reconnects from a 30 s alarm.
 - Native Messaging was not used: the host Chrome would spawn and the MCP server the client spawns are separate processes, so a bridge would be needed anyway. One WebSocket does the job.
+- `CHROME_BOOKMARKS_MCP_PORTS=17879,17878` (comma-separated) overrides the candidate ports. The smoke test uses this so that a test server never shares the 17870–17874 range with real sessions or the real extension.
 - The server and the extension share a tiny JSON protocol (`{id, api, args}` → `{id, result | error}`), so keep their versions in step.
 
 ## Security

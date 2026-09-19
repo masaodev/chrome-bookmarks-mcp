@@ -1,5 +1,7 @@
 // Smoke test: start the server as an MCP client, attach the fake extension and exercise every tool.
 //   node test/smoke.mjs
+// The server is started on a test-only port (outside 17870-17874) so that the fake extension never
+// reaches a real session's server and the real Chrome extension never reaches this test server.
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,13 +10,14 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { startFakeExtension } from "./fake-extension.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const PORTS = [17870, 17871, 17872, 17873, 17874];
+const TEST_PORTS = [17879, 17878];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const client = new Client({ name: "smoke", version: "0.0.0" });
 const transport = new StdioClientTransport({
   command: process.execPath,
   args: [path.join(here, "..", "server", "index.js")],
+  env: { ...process.env, CHROME_BOOKMARKS_MCP_PORTS: TEST_PORTS.join(",") },
   stderr: "pipe",
 });
 transport.stderr?.on("data", (d) => process.stderr.write(`  [server] ${d}`));
@@ -38,13 +41,14 @@ try {
   assert.equal(r0.isError, true);
   assert.match(r0.text, /not connected/);
 
-  fake = startFakeExtension(PORTS);
+  fake = startFakeExtension(TEST_PORTS);
   for (let i = 0; i < 20 && fake.connected === 0; i++) await sleep(100);
   assert.ok(fake.connected >= 1, "fake extension could not connect");
   await sleep(100);
 
   const st = await call("bookmarks_status");
   assert.match(st.text, /"connected": 1/);
+  assert.equal(JSON.parse(st.text).port, TEST_PORTS[0]);
 
   const f = await call("bookmarks_create", {
     parentId: "1",

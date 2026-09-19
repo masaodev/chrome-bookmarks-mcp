@@ -112,6 +112,7 @@ claude mcp add --scope user chrome-bookmarks -- node /path/to/chrome-bookmarks-m
 
 - MV3 の service worker は約 30 秒で寝るため、サーバーから 20 秒ごとにアプリ層 ping を送り、拡張側でも 30 秒ごとの alarm で再接続する
 - Native Messaging は使わなかった。Chrome が起動するホストと MCP クライアントが起動するサーバーが別プロセスになり、結局ブリッジが要るため。WebSocket 1 本で済ませた
+- 環境変数 `CHROME_BOOKMARKS_MCP_PORTS=17879,17878`（カンマ区切り）で候補ポートを差し替えられる。スモークテストはこれを使い、テスト用サーバーが実セッション・本物の拡張と 17870〜17874 を共有しないようにしている
 - サーバーと拡張は小さな JSON プロトコル（`{id, api, args}` → `{id, result | error}`）を共有する。両者のバージョンは揃えて使う
 
 ## セキュリティ

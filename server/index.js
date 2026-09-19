@@ -15,7 +15,14 @@ import { z } from "zod";
 
 const { version: VERSION } = createRequire(import.meta.url)("../package.json");
 
-const PORTS = [17870, 17871, 17872, 17873, 17874]; // must match extension/background.js (multi-session support)
+const DEFAULT_PORTS = [17870, 17871, 17872, 17873, 17874]; // must match extension/background.js (multi-session support)
+// CHROME_BOOKMARKS_MCP_PORTS="17879" (comma-separated) overrides the candidate ports.
+// Used by the tests so that a test server never shares a port range with real sessions or the real extension.
+const PORTS = (process.env.CHROME_BOOKMARKS_MCP_PORTS || "")
+  .split(",")
+  .map((v) => Number.parseInt(v.trim(), 10))
+  .filter((n) => Number.isInteger(n) && n > 0);
+if (!PORTS.length) PORTS.push(...DEFAULT_PORTS);
 const CALL_TIMEOUT_MS = 15000;
 const PING_INTERVAL_MS = 20000; // application-level ping to keep the MV3 service worker awake
 
@@ -94,6 +101,13 @@ class Bridge {
     ws.on("close", () => {
       this.clients.delete(client);
       log(`extension disconnected (${this.clients.size})`);
+      // Fail calls that were sent to this socket right away instead of waiting for the timeout.
+      for (const [id, p] of this.pending) {
+        if (p.client !== client) continue;
+        clearTimeout(p.timer);
+        this.pending.delete(id);
+        p.reject(new Error("Chrome extension disconnected while the call was in flight"));
+      }
     });
     ws.on("error", (e) => log("ws error", e.message));
 
@@ -106,7 +120,9 @@ class Bridge {
 
   /** Send chrome.bookmarks.<api>(...args) to the most recently connected extension (normally the active profile). */
   call(api, args = []) {
-    const client = [...this.clients].at(-1);
+    const client = [...this.clients]
+      .reverse()
+      .find((c) => c.ws.readyState === c.ws.OPEN);
     if (!client) {
       throw new Error(
         `Chrome extension is not connected (ws://127.0.0.1:${this.port}). ` +
@@ -123,8 +139,13 @@ class Bridge {
           ),
         );
       }, CALL_TIMEOUT_MS);
-      this.pending.set(id, { resolve, reject, timer });
-      client.ws.send(JSON.stringify({ id, api, args }));
+      this.pending.set(id, { resolve, reject, timer, client });
+      client.ws.send(JSON.stringify({ id, api, args }), (err) => {
+        if (!err || !this.pending.has(id)) return;
+        clearTimeout(timer);
+        this.pending.delete(id);
+        reject(new Error(`Failed to send to the extension: ${err.message}`));
+      });
     });
   }
 
@@ -435,6 +456,12 @@ async function main() {
   await bridge.listen();
   const transport = new StdioServerTransport();
   await server.connect(transport);
+  // Exit when the client closes our stdin (the SDK transport does not watch for EOF, and the
+  // WebSocket server would otherwise keep an orphaned process alive and hold a port forever).
+  process.stdin.on("end", () => {
+    log("stdin closed, exiting");
+    process.exit(0);
+  });
   log(`MCP server v${VERSION} ready`);
 }
 
