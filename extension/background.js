@@ -21,6 +21,7 @@ const ALLOWED_API = new Set([
 ]);
 
 const sockets = new Map(); // port -> WebSocket
+const probing = new Set(); // ports with a probe in flight
 
 function updateBadge() {
   const n = [...sockets.values()].filter(
@@ -45,14 +46,40 @@ async function handle(msg, ws) {
   }
 }
 
-function connect(port) {
+// A failed WebSocket connection is always logged as an error (onerror cannot suppress it),
+// which fills the "Errors" list on chrome://extensions with ERR_CONNECTION_REFUSED for every
+// port without a server. A plain fetch fails quietly, so probe with it first.
+async function serverListening(port) {
+  try {
+    await fetch(`http://127.0.0.1:${port}/`, {
+      mode: "no-cors",
+      cache: "no-store",
+      signal: AbortSignal.timeout(2000),
+    });
+    return true; // any HTTP response (the server answers 426) means someone is listening
+  } catch {
+    return false;
+  }
+}
+
+async function connect(port) {
   const existing = sockets.get(port);
   if (
-    existing &&
-    (existing.readyState === WebSocket.OPEN ||
-      existing.readyState === WebSocket.CONNECTING)
+    probing.has(port) ||
+    (existing &&
+      (existing.readyState === WebSocket.OPEN ||
+        existing.readyState === WebSocket.CONNECTING))
   )
     return;
+
+  probing.add(port);
+  let up;
+  try {
+    up = await serverListening(port);
+  } finally {
+    probing.delete(port);
+  }
+  if (!up) return;
 
   const ws = new WebSocket(`ws://127.0.0.1:${port}`);
   sockets.set(port, ws);
@@ -83,7 +110,7 @@ function connect(port) {
     updateBadge();
   };
   ws.onerror = () => {
-    /* Ports without a server fail every time; the next alarm retries. */
+    /* Rare after the probe (e.g. the server exited in between); the next alarm retries. */
   };
 }
 
