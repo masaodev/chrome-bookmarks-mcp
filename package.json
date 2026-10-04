@@ -1,6 +1,6 @@
 {
   "name": "chrome-bookmarks-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP server that lets Claude Code and other MCP clients read and write Chrome bookmarks via a companion Chrome extension",
   "type": "module",
   "bin": {
