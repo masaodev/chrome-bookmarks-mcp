@@ -106,7 +106,11 @@ class Bridge {
         if (p.client !== client) continue;
         clearTimeout(p.timer);
         this.pending.delete(id);
-        p.reject(new Error("Chrome extension disconnected while the call was in flight"));
+        p.reject(
+          new Error(
+            "Chrome extension disconnected while the call was in flight",
+          ),
+        );
       }
     });
     ws.on("error", (e) => log("ws error", e.message));

@@ -16,7 +16,9 @@
     "start": "node server/index.js",
     "test": "node test/smoke.mjs",
     "live": "node test/live.mjs",
-    "pack:extension": "node scripts/pack-extension.mjs"
+    "pack:extension": "node scripts/pack-extension.mjs",
+    "format": "prettier --write \"**/*.{js,mjs,json}\"",
+    "format:check": "prettier --check \"**/*.{js,mjs,json}\""
   },
   "engines": {
     "node": ">=18"
@@ -44,5 +46,8 @@
     "@modelcontextprotocol/sdk": "^1.30.0",
     "ws": "^8.21.3",
     "zod": "^4.6.4"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.9"
   }
 }
