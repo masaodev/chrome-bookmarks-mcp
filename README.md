@@ -95,19 +95,20 @@ chrome-bookmarks create --parent 1 --title "Docs" --url https://docs.claude.com/
 chrome-bookmarks help                # all commands
 ```
 
-| Command                                                | Same as                                      |
-| ------------------------------------------------------ | -------------------------------------------- |
-| `status`                                               | `bookmarks_status` (plus the daemon state)   |
-| `tree [id]`                                            | `bookmarks_get_tree`                         |
-| `children <id>`                                        | `bookmarks_get_children`                     |
-| `get <id> [id...]`                                     | `bookmarks_get`                              |
-| `search [query] [--title T] [--url U]`                 | `bookmarks_search`                           |
-| `recent [count]`                                       | `bookmarks_get_recent`                       |
-| `create --title T [--url U] [--parent ID] [--index N]` | `bookmarks_create`                           |
-| `update <id> [--title T] [--url U]`                    | `bookmarks_update`                           |
-| `move <id> [--parent ID] [--index N]`                  | `bookmarks_move`                             |
-| `remove <id>` / `remove-tree <id>`                     | `bookmarks_remove` / `bookmarks_remove_tree` |
-| `stop`                                                 | Stop the background daemon                   |
+| Command                                                | Same as                                                                                    |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `status`                                               | `bookmarks_status` (plus the daemon state)                                                 |
+| `tree [id]`                                            | `bookmarks_get_tree`                                                                       |
+| `children <id>`                                        | `bookmarks_get_children`                                                                   |
+| `get <id> [id...]`                                     | `bookmarks_get`                                                                            |
+| `search [query] [--title T] [--url U]`                 | `bookmarks_search`                                                                         |
+| `recent [count]`                                       | `bookmarks_get_recent`                                                                     |
+| `create --title T [--url U] [--parent ID] [--index N]` | `bookmarks_create`                                                                         |
+| `update <id> [--title T] [--url U]`                    | `bookmarks_update`                                                                         |
+| `move <id> [--parent ID] [--index N]`                  | `bookmarks_move`                                                                           |
+| `remove <id>` / `remove-tree <id>`                     | `bookmarks_remove` / `bookmarks_remove_tree`                                               |
+| `start`                                                | Start the daemon and return at once, so the extension connects in the background (warm-up) |
+| `stop`                                                 | Stop the background daemon                                                                 |
 
 Add `--json` to print the raw `BookmarkTreeNode` data.
 

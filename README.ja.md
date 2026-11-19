@@ -95,19 +95,20 @@ chrome-bookmarks create --parent 1 --title "Docs" --url https://docs.claude.com/
 chrome-bookmarks help                # コマンド一覧
 ```
 
-| コマンド                                               | 対応するツール                               |
-| ------------------------------------------------------ | -------------------------------------------- |
-| `status`                                               | `bookmarks_status`（デーモンの状態つき）     |
-| `tree [id]`                                            | `bookmarks_get_tree`                         |
-| `children <id>`                                        | `bookmarks_get_children`                     |
-| `get <id> [id...]`                                     | `bookmarks_get`                              |
-| `search [query] [--title T] [--url U]`                 | `bookmarks_search`                           |
-| `recent [count]`                                       | `bookmarks_get_recent`                       |
-| `create --title T [--url U] [--parent ID] [--index N]` | `bookmarks_create`                           |
-| `update <id> [--title T] [--url U]`                    | `bookmarks_update`                           |
-| `move <id> [--parent ID] [--index N]`                  | `bookmarks_move`                             |
-| `remove <id>` / `remove-tree <id>`                     | `bookmarks_remove` / `bookmarks_remove_tree` |
-| `stop`                                                 | 裏で動いているデーモンを止める               |
+| コマンド                                               | 対応するツール                                                                     |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| `status`                                               | `bookmarks_status`（デーモンの状態つき）                                           |
+| `tree [id]`                                            | `bookmarks_get_tree`                                                               |
+| `children <id>`                                        | `bookmarks_get_children`                                                           |
+| `get <id> [id...]`                                     | `bookmarks_get`                                                                    |
+| `search [query] [--title T] [--url U]`                 | `bookmarks_search`                                                                 |
+| `recent [count]`                                       | `bookmarks_get_recent`                                                             |
+| `create --title T [--url U] [--parent ID] [--index N]` | `bookmarks_create`                                                                 |
+| `update <id> [--title T] [--url U]`                    | `bookmarks_update`                                                                 |
+| `move <id> [--parent ID] [--index N]`                  | `bookmarks_move`                                                                   |
+| `remove <id>` / `remove-tree <id>`                     | `bookmarks_remove` / `bookmarks_remove_tree`                                       |
+| `start`                                                | デーモンを起動してすぐ戻る。拡張がつながるのを裏で進めておく（先に起こしておく用） |
+| `stop`                                                 | 裏で動いているデーモンを止める                                                     |
 
 `--json` を付けると生の `BookmarkTreeNode` を出す。
 

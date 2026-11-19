@@ -53,6 +53,8 @@ Write
   remove-tree <id>               Remove a folder and everything inside it (cannot be undone)
 
 Daemon
+  start                          Start the background daemon and return at once (warm-up:
+                                 the extension connects while you do something else)
   stop                           Stop the background daemon now
 
 Options
@@ -313,6 +315,16 @@ async function main(argv) {
     await rpc(live, { op: "stop" });
     return console.log(`stopped daemon (pid ${live.pid})`);
   }
+  if (cmd === "start") {
+    const state = await ensureDaemon();
+    const st = await rpc(state, { op: "status" });
+    return console.log(
+      `daemon running (pid ${state.pid}, port ${st.port}); ` +
+        (st.connected
+          ? "Chrome extension connected"
+          : "waiting for the Chrome extension (connects within ~30 s)"),
+    );
+  }
   if (cmd === "status") {
     const live = await liveDaemon();
     const st = live
@@ -365,5 +377,7 @@ async function main(argv) {
 
 main(process.argv.slice(2)).catch((e) => {
   console.error(`Error: ${e.message || e}`);
-  process.exit(1);
+  // Let the process end by itself: process.exit() while fetch's sockets are still closing
+  // trips a libuv assertion on Windows (exit code 3221226505 instead of 1).
+  process.exitCode = 1;
 });

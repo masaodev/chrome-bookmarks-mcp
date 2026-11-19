@@ -55,7 +55,14 @@ try {
   const st0 = await cli("status");
   assert.equal(JSON.parse(st0.stdout).daemon, "stopped");
 
-  // First command starts the daemon, which the fake extension then reaches
+  // start returns at once, before the extension has connected
+  const t0 = Date.now();
+  const started = await cli("start");
+  assert.equal(started.code, 0, started.stderr);
+  assert.match(started.stdout, /daemon running/);
+  assert.ok(Date.now() - t0 < 10000, "start should not wait for the extension");
+
+  // The next command uses that daemon, which the fake extension then reaches
   const top = await cli("children", "0");
   assert.equal(top.code, 0, top.stderr);
   assert.match(top.stdout, /Bookmarks bar/);
@@ -97,7 +104,7 @@ try {
     /Claude Code Docs/,
   );
   const s3 = await cli("search");
-  assert.notEqual(s3.code, 0);
+  assert.equal(s3.code, 1);
   assert.match(s3.stderr, /Specify at least one/);
 
   assert.match(
@@ -113,7 +120,7 @@ try {
   assert.notEqual((await cli("nope")).code, 0);
 
   assert.match((await cli("remove", bId)).stdout, /^Removed:/);
-  assert.notEqual((await cli("remove", folderId)).code, 0);
+  assert.equal((await cli("remove", folderId)).code, 1); // a clean error exit, not a crash
   assert.match((await cli("remove-tree", folderId)).stdout, /Claude Code Docs/);
   assert.equal((await cli("children", "1")).stdout.trim(), "(empty)");
 
