@@ -10,189 +10,16 @@
 import { createRequire } from "node:module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { WebSocketServer } from "ws";
 import { z } from "zod";
+import { Bridge, createOps, makeLog, resolvePorts } from "./bridge.js";
 
 const { version: VERSION } = createRequire(import.meta.url)("../package.json");
-
-const DEFAULT_PORTS = [17870, 17871, 17872, 17873, 17874]; // must match extension/background.js (multi-session support)
-// CHROME_BOOKMARKS_MCP_PORTS="17879" (comma-separated) overrides the candidate ports.
-// Used by the tests so that a test server never shares a port range with real sessions or the real extension.
-const PORTS = (process.env.CHROME_BOOKMARKS_MCP_PORTS || "")
-  .split(",")
-  .map((v) => Number.parseInt(v.trim(), 10))
-  .filter((n) => Number.isInteger(n) && n > 0);
-if (!PORTS.length) PORTS.push(...DEFAULT_PORTS);
-const CALL_TIMEOUT_MS = 15000;
-const PING_INTERVAL_MS = 20000; // application-level ping to keep the MV3 service worker awake
-
-const log = (...a) => console.error("[chrome-bookmarks-mcp]", ...a);
-
-// ---------------------------------------------------------------------------
-// Bridge to the extension
-// ---------------------------------------------------------------------------
-class Bridge {
-  constructor() {
-    this.clients = new Set();
-    this.pending = new Map();
-    this.seq = 0;
-    this.port = null;
-  }
-
-  async listen() {
-    for (const port of PORTS) {
-      try {
-        this.wss = await this.#tryListen(port);
-        this.port = port;
-        log(`listening ws://127.0.0.1:${port}`);
-        return port;
-      } catch (e) {
-        if (e.code === "EADDRINUSE") continue;
-        throw e;
-      }
-    }
-    throw new Error(`No free port (${PORTS[0]}-${PORTS.at(-1)})`);
-  }
-
-  #tryListen(port) {
-    return new Promise((resolve, reject) => {
-      const wss = new WebSocketServer({ host: "127.0.0.1", port });
-      wss.once("error", reject);
-      wss.once("listening", () => {
-        wss.off("error", reject);
-        wss.on("error", (e) => log("wss error", e));
-        wss.on("connection", (ws, req) => this.#onConnection(ws, req));
-        resolve(wss);
-      });
-    });
-  }
-
-  #onConnection(ws, req) {
-    const origin = req.headers.origin || "";
-    if (!origin.startsWith("chrome-extension://")) {
-      log(`reject origin=${origin}`);
-      ws.close(4003, "origin not allowed");
-      return;
-    }
-    const client = { ws, origin, hello: null, connectedAt: new Date() };
-    this.clients.add(client);
-    log(`extension connected (${this.clients.size})`);
-
-    ws.on("message", (data) => {
-      let msg;
-      try {
-        msg = JSON.parse(data.toString());
-      } catch {
-        return;
-      }
-      if (msg.hello) {
-        client.hello = msg.hello;
-        return;
-      }
-      if (msg.pong) return;
-      if (msg.id !== undefined && this.pending.has(msg.id)) {
-        const { resolve, reject, timer } = this.pending.get(msg.id);
-        clearTimeout(timer);
-        this.pending.delete(msg.id);
-        if (msg.error !== undefined) reject(new Error(msg.error));
-        else resolve(msg.result);
-      }
-    });
-    ws.on("close", () => {
-      this.clients.delete(client);
-      log(`extension disconnected (${this.clients.size})`);
-      // Fail calls that were sent to this socket right away instead of waiting for the timeout.
-      for (const [id, p] of this.pending) {
-        if (p.client !== client) continue;
-        clearTimeout(p.timer);
-        this.pending.delete(id);
-        p.reject(
-          new Error(
-            "Chrome extension disconnected while the call was in flight",
-          ),
-        );
-      }
-    });
-    ws.on("error", (e) => log("ws error", e.message));
-
-    const ping = setInterval(() => {
-      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ ping: true }));
-      else clearInterval(ping);
-    }, PING_INTERVAL_MS);
-    ws.once("close", () => clearInterval(ping));
-  }
-
-  /** Send chrome.bookmarks.<api>(...args) to the most recently connected extension (normally the active profile). */
-  call(api, args = []) {
-    const client = [...this.clients]
-      .reverse()
-      .find((c) => c.ws.readyState === c.ws.OPEN);
-    if (!client) {
-      throw new Error(
-        `Chrome extension is not connected (ws://127.0.0.1:${this.port}). ` +
-          'Check that Chrome is running and "Chrome Bookmarks MCP Bridge" is enabled at chrome://extensions.',
-      );
-    }
-    const id = ++this.seq;
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(
-          new Error(
-            `No response from the extension (${api}, ${CALL_TIMEOUT_MS}ms)`,
-          ),
-        );
-      }, CALL_TIMEOUT_MS);
-      this.pending.set(id, { resolve, reject, timer, client });
-      client.ws.send(JSON.stringify({ id, api, args }), (err) => {
-        if (!err || !this.pending.has(id)) return;
-        clearTimeout(timer);
-        this.pending.delete(id);
-        reject(new Error(`Failed to send to the extension: ${err.message}`));
-      });
-    });
-  }
-
-  status() {
-    return {
-      port: this.port,
-      connected: this.clients.size,
-      clients: [...this.clients].map((c) => ({
-        origin: c.origin,
-        connectedAt: c.connectedAt.toISOString(),
-        ...(c.hello || {}),
-      })),
-    };
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Formatting
-// ---------------------------------------------------------------------------
-function formatTree(nodes, depth = 0, lines = []) {
-  for (const n of nodes) {
-    const pad = "  ".repeat(depth);
-    if (n.url) {
-      lines.push(`${pad}[${n.id}] ${n.title || "(untitled)"}  ${n.url}`);
-    } else {
-      const count = n.children ? ` (${n.children.length})` : "";
-      lines.push(`${pad}[${n.id}] 📁 ${n.title || "(root)"}${count}`);
-      if (n.children) formatTree(n.children, depth + 1, lines);
-    }
-  }
-  return lines;
-}
-
-function formatList(nodes) {
-  return nodes.map((n) =>
-    n.url
-      ? `[${n.id}] ${n.title || "(untitled)"}  ${n.url}  (parent=${n.parentId}, index=${n.index})`
-      : `[${n.id}] 📁 ${n.title || "(root)"}  (parent=${n.parentId ?? "-"}, index=${n.index ?? "-"})`,
-  );
-}
+const log = makeLog("chrome-bookmarks-mcp");
 
 const text = (s) => ({ content: [{ type: "text", text: s }] });
 const json = (o) => text(JSON.stringify(o, null, 2));
+const out = ({ data, text: t }, format) =>
+  format === "json" ? json(data) : text(t);
 const errorResult = (e) => ({
   content: [{ type: "text", text: `Error: ${e.message || e}` }],
   isError: true,
@@ -201,7 +28,8 @@ const errorResult = (e) => ({
 // ---------------------------------------------------------------------------
 // MCP server
 // ---------------------------------------------------------------------------
-const bridge = new Bridge();
+const bridge = new Bridge({ ports: resolvePorts(), log });
+const ops = createOps((api, args) => bridge.call(api, args));
 const server = new McpServer({ name: "chrome-bookmarks", version: VERSION });
 
 const fmtSchema = z
@@ -251,12 +79,7 @@ tool(
     },
     annotations: { readOnlyHint: true },
   },
-  async ({ id, format }) => {
-    const nodes = id
-      ? await bridge.call("getSubTree", [id])
-      : await bridge.call("getTree");
-    return format === "json" ? json(nodes) : text(formatTree(nodes).join("\n"));
-  },
+  async ({ id, format }) => out(await ops.getTree({ id }), format),
 );
 
 tool(
@@ -268,12 +91,7 @@ tool(
     inputSchema: { id: z.string().describe("Folder id"), format: fmtSchema },
     annotations: { readOnlyHint: true },
   },
-  async ({ id, format }) => {
-    const nodes = await bridge.call("getChildren", [id]);
-    return format === "json"
-      ? json(nodes)
-      : text(formatList(nodes).join("\n") || "(empty)");
-  },
+  async ({ id, format }) => out(await ops.getChildren({ id }), format),
 );
 
 tool(
@@ -287,10 +105,7 @@ tool(
     },
     annotations: { readOnlyHint: true },
   },
-  async ({ ids, format }) => {
-    const nodes = await bridge.call("get", [ids]);
-    return format === "json" ? json(nodes) : text(formatList(nodes).join("\n"));
-  },
+  async ({ ids, format }) => out(await ops.get({ ids }), format),
 );
 
 tool(
@@ -307,23 +122,7 @@ tool(
     },
     annotations: { readOnlyHint: true },
   },
-  async ({ query, title, url, format }) => {
-    let arg;
-    if (title !== undefined || url !== undefined) {
-      arg = {};
-      if (query !== undefined) arg.query = query;
-      if (title !== undefined) arg.title = title;
-      if (url !== undefined) arg.url = url;
-    } else if (query !== undefined) {
-      arg = query;
-    } else {
-      throw new Error("Specify at least one of query / title / url");
-    }
-    const nodes = await bridge.call("search", [arg]);
-    return format === "json"
-      ? json(nodes)
-      : text(formatList(nodes).join("\n") || "(no matches)");
-  },
+  async ({ format, ...q }) => out(await ops.search(q), format),
 );
 
 tool(
@@ -337,12 +136,7 @@ tool(
     },
     annotations: { readOnlyHint: true },
   },
-  async ({ count, format }) => {
-    const nodes = await bridge.call("getRecent", [count]);
-    return format === "json"
-      ? json(nodes)
-      : text(formatList(nodes).join("\n") || "(none)");
-  },
+  async ({ count, format }) => out(await ops.getRecent({ count }), format),
 );
 
 tool(
@@ -363,10 +157,7 @@ tool(
         .describe("Position within the parent (omit to append)"),
     },
   },
-  async ({ parentId, title, url, index }) => {
-    const node = await bridge.call("create", [{ parentId, title, url, index }]);
-    return text(`Created: ${formatList([node])[0]}`);
-  },
+  async (args) => text((await ops.create(args)).text),
 );
 
 tool(
@@ -380,15 +171,7 @@ tool(
       url: z.string().optional().describe("Not allowed for folders"),
     },
   },
-  async ({ id, title, url }) => {
-    const changes = {};
-    if (title !== undefined) changes.title = title;
-    if (url !== undefined) changes.url = url;
-    if (!Object.keys(changes).length)
-      throw new Error("Specify title and/or url");
-    const node = await bridge.call("update", [id, changes]);
-    return text(`Updated: ${formatList([node])[0]}`);
-  },
+  async (args) => text((await ops.update(args)).text),
 );
 
 tool(
@@ -411,13 +194,7 @@ tool(
         .describe("Destination position (omit to append)"),
     },
   },
-  async ({ id, parentId, index }) => {
-    const dest = {};
-    if (parentId !== undefined) dest.parentId = parentId;
-    if (index !== undefined) dest.index = index;
-    const node = await bridge.call("move", [id, dest]);
-    return text(`Moved: ${formatList([node])[0]}`);
-  },
+  async (args) => text((await ops.move(args)).text),
 );
 
 tool(
@@ -430,11 +207,7 @@ tool(
     inputSchema: { id: z.string() },
     annotations: { destructiveHint: true },
   },
-  async ({ id }) => {
-    const [node] = await bridge.call("get", [[id]]);
-    await bridge.call("remove", [id]);
-    return text(`Removed: ${formatList([node])[0]}`);
-  },
+  async ({ id }) => text((await ops.remove({ id })).text),
 );
 
 tool(
@@ -447,12 +220,7 @@ tool(
     inputSchema: { id: z.string() },
     annotations: { destructiveHint: true },
   },
-  async ({ id }) => {
-    const [sub] = await bridge.call("getSubTree", [id]);
-    const lines = formatTree([sub]);
-    await bridge.call("removeTree", [id]);
-    return text(`Removed (${lines.length} lines):\n${lines.join("\n")}`);
-  },
+  async ({ id }) => text((await ops.removeTree({ id })).text),
 );
 
 // ---------------------------------------------------------------------------

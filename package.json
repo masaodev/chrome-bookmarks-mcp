@@ -1,20 +1,23 @@
 {
   "name": "chrome-bookmarks-mcp",
-  "version": "0.1.1",
-  "description": "MCP server that lets Claude Code and other MCP clients read and write Chrome bookmarks via a companion Chrome extension",
+  "version": "0.2.0",
+  "description": "MCP server and CLI that let Claude Code and other clients read and write Chrome bookmarks via a companion Chrome extension",
   "type": "module",
   "bin": {
-    "chrome-bookmarks-mcp": "server/index.js"
+    "chrome-bookmarks-mcp": "server/index.js",
+    "chrome-bookmarks": "server/cli.js"
   },
   "files": [
     "server/index.js",
+    "server/bridge.js",
+    "server/cli.js",
     "README.md",
     "README.ja.md",
     "LICENSE"
   ],
   "scripts": {
     "start": "node server/index.js",
-    "test": "node test/smoke.mjs",
+    "test": "node test/smoke.mjs && node test/cli.mjs",
     "live": "node test/live.mjs",
     "pack:extension": "node scripts/pack-extension.mjs",
     "format": "prettier --write \"**/*.{js,mjs,json}\"",
