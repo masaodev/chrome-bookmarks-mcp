@@ -124,6 +124,22 @@ try {
   });
   assert.equal(forged.status, 426);
 
+  // A daemon of another version (e.g. left over from before an upgrade) is replaced
+  const stateFile = path.join(stateDir, `daemon-${TEST_PORTS.join("-")}.json`);
+  const oldState = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+  fs.writeFileSync(
+    stateFile,
+    JSON.stringify({ ...oldState, version: "0.0.0-old" }),
+  );
+  assert.match((await cli("children", "0")).stdout, /Bookmarks bar/);
+  const newState = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+  assert.notEqual(
+    newState.pid,
+    oldState.pid,
+    "old-version daemon was not replaced",
+  );
+  assert.notEqual(newState.version, "0.0.0-old");
+
   // stop, then a new command starts a fresh daemon
   assert.match((await cli("stop")).stdout, /stopped daemon/);
   await sleep(300);

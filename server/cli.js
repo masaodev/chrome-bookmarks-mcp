@@ -196,9 +196,28 @@ async function liveDaemon() {
   }
 }
 
+/** Wait until the stopped daemon has removed its state file (it exits right after). */
+async function waitForPortRelease(old) {
+  const until = Date.now() + 5000;
+  while (Date.now() < until) {
+    if (readState()?.pid !== old.pid) return;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
 async function ensureDaemon() {
   const live = await liveDaemon();
-  if (live) return live;
+  // A daemon from another version (e.g. left over from before an upgrade) is replaced,
+  // so that the command always runs with the code that was just installed.
+  if (live && live.version === VERSION) return live;
+  if (live) {
+    try {
+      await rpc(live, { op: "stop" });
+    } catch {
+      /* already exiting */
+    }
+    await waitForPortRelease(live);
+  }
 
   fs.mkdirSync(STATE_DIR, { recursive: true });
   const logFd = fs.openSync(path.join(STATE_DIR, "daemon.log"), "a");
