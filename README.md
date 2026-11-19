@@ -15,6 +15,7 @@ Chrome exposes bookmark editing only to extensions (`chrome.bookmarks`), and edi
 
 ## Features
 
+- A `chrome-bookmarks` CLI for use without a resident MCP server (see [CLI](#cli-no-resident-mcp-server))
 - 11 tools: status, get_tree, get_children, get, search, get_recent, create, update, move, remove, remove_tree
 - Multiple MCP clients at once: the server takes the first free port in 17870–17874, the extension connects to all five
 - Local only: the server binds to `127.0.0.1` and accepts connections whose `Origin` is `chrome-extension://`
@@ -82,6 +83,37 @@ Every read tool accepts `format: "json"` to get the raw `BookmarkTreeNode` objec
 
 The ids of the top-level folders (Bookmarks bar / Other bookmarks / Mobile bookmarks) differ between Chrome profiles. Call `bookmarks_get_children` with id `0` to look them up.
 
+## CLI (no resident MCP server)
+
+The package also installs a `chrome-bookmarks` command. It needs no MCP registration, so nothing runs while you are not using it. This suits clients that can run shell commands (such as Claude Code through a skill) and setups with many parallel sessions, where one MCP server per session adds up.
+
+```sh
+npm install -g chrome-bookmarks-mcp
+chrome-bookmarks children 0          # top-level folders
+chrome-bookmarks search "anthropic"
+chrome-bookmarks create --parent 1 --title "Docs" --url https://docs.claude.com/
+chrome-bookmarks help                # all commands
+```
+
+| Command                                                | Same as                                                                                    |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `status`                                               | `bookmarks_status` (plus the daemon state)                                                 |
+| `tree [id]`                                            | `bookmarks_get_tree`                                                                       |
+| `children <id>`                                        | `bookmarks_get_children`                                                                   |
+| `get <id> [id...]`                                     | `bookmarks_get`                                                                            |
+| `search [query] [--title T] [--url U]`                 | `bookmarks_search`                                                                         |
+| `recent [count]`                                       | `bookmarks_get_recent`                                                                     |
+| `create --title T [--url U] [--parent ID] [--index N]` | `bookmarks_create`                                                                         |
+| `update <id> [--title T] [--url U]`                    | `bookmarks_update`                                                                         |
+| `move <id> [--parent ID] [--index N]`                  | `bookmarks_move`                                                                           |
+| `remove <id>` / `remove-tree <id>`                     | `bookmarks_remove` / `bookmarks_remove_tree`                                               |
+| `start`                                                | Start the daemon and return at once, so the extension connects in the background (warm-up) |
+| `stop`                                                 | Stop the background daemon                                                                 |
+
+Add `--json` to print the raw `BookmarkTreeNode` data.
+
+How it works: the first command starts one shared background daemon on a free port in 17870–17874 and waits for the extension. The extension reconnects every 30 s, so **the first command can take up to ~30 s**; later commands reuse the connection and return at once. The daemon exits by itself after 10 minutes without commands (`CHROME_BOOKMARKS_IDLE_MS` changes this). It writes its port and a random token to `<temp>/chrome-bookmarks-mcp/daemon-<ports>.json`, and its log to `daemon.log` in the same folder. The MCP server and the CLI can be used side by side.
+
 ## Troubleshooting
 
 | Symptom                                                                                                                      | What to check                                                                                                                                                                                                                                                                                                    |
@@ -119,6 +151,8 @@ claude mcp add --scope user chrome-bookmarks -- node /path/to/chrome-bookmarks-m
 ## Security
 
 The server listens on the loopback interface only and rejects connections without a `chrome-extension://` origin. The extension only executes the whitelisted `chrome.bookmarks` methods listed in `background.js`. Any local process could in principle connect to the port and pose as an MCP server; if that matters in your environment, disable the extension when not in use.
+
+The CLI daemon only accepts commands that carry the random token from its state file and no `Origin` header, so web pages cannot drive it.
 
 ## License
 

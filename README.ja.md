@@ -15,6 +15,7 @@ MCP クライアント ──(stdio / MCP)── chrome-bookmarks-mcp ──(Web
 
 ## 特徴
 
+- MCP サーバーを常駐させずに使える `chrome-bookmarks` コマンド（[CLI](#climcp-サーバーを常駐させない使い方)）
 - ツール 11 個: status／get_tree／get_children／get／search／get_recent／create／update／move／remove／remove_tree
 - 複数の MCP クライアントを同時に扱える（サーバーは 17870〜17874 の空きポートを順に取り、拡張は 5 ポート全部に接続する）
 - ローカル限定（サーバーは `127.0.0.1` にだけバインドし、`Origin` が `chrome-extension://` の接続だけ受け付ける）
@@ -82,6 +83,37 @@ Claude Code の新しいセッションで「ブックマークのフォルダ�
 
 ルート直下（ブックマークバー・その他のブックマーク・モバイルのブックマーク）の id はプロファイルごとに違う。`bookmarks_get_children` に id `0` を渡して確かめる。
 
+## CLI（MCP サーバーを常駐させない使い方）
+
+パッケージには `chrome-bookmarks` コマンドも入っている。MCP への登録が要らず、使っていないあいだは何も動かない。シェルコマンドを実行できるクライアント（スキルから呼ぶ Claude Code など）や、セッションを何本も並行させていてセッションごとの MCP サーバーがかさむ環境に向く。
+
+```sh
+npm install -g chrome-bookmarks-mcp
+chrome-bookmarks children 0          # ルート直下のフォルダ
+chrome-bookmarks search "anthropic"
+chrome-bookmarks create --parent 1 --title "Docs" --url https://docs.claude.com/
+chrome-bookmarks help                # コマンド一覧
+```
+
+| コマンド                                               | 対応するツール                                                                     |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| `status`                                               | `bookmarks_status`（デーモンの状態つき）                                           |
+| `tree [id]`                                            | `bookmarks_get_tree`                                                               |
+| `children <id>`                                        | `bookmarks_get_children`                                                           |
+| `get <id> [id...]`                                     | `bookmarks_get`                                                                    |
+| `search [query] [--title T] [--url U]`                 | `bookmarks_search`                                                                 |
+| `recent [count]`                                       | `bookmarks_get_recent`                                                             |
+| `create --title T [--url U] [--parent ID] [--index N]` | `bookmarks_create`                                                                 |
+| `update <id> [--title T] [--url U]`                    | `bookmarks_update`                                                                 |
+| `move <id> [--parent ID] [--index N]`                  | `bookmarks_move`                                                                   |
+| `remove <id>` / `remove-tree <id>`                     | `bookmarks_remove` / `bookmarks_remove_tree`                                       |
+| `start`                                                | デーモンを起動してすぐ戻る。拡張がつながるのを裏で進めておく（先に起こしておく用） |
+| `stop`                                                 | 裏で動いているデーモンを止める                                                     |
+
+`--json` を付けると生の `BookmarkTreeNode` を出す。
+
+仕組み: 最初のコマンドが、共有のデーモンを 1 つ裏で起動する（17870〜17874 の空きポートを使う）。デーモンは拡張がつながるのを待つ。拡張は 30 秒ごとにつなぎ直すので、**最初の 1 回は最大 30 秒ほどかかる**。2 回目からは同じ接続を使うので、すぐ返る。デーモンはコマンドが 10 分来なければ自分で終わる（`CHROME_BOOKMARKS_IDLE_MS` で変えられる）。ポートとランダムなトークンは `<一時フォルダ>/chrome-bookmarks-mcp/daemon-<ポート>.json` に、ログは同じフォルダの `daemon.log` に書く。MCP サーバーと CLI は併用できる。
+
 ## トラブルシュート
 
 | 症状                                                                                                                | 見るところ                                                                                                                                                                                                                                                                      |
@@ -119,6 +151,8 @@ claude mcp add --scope user chrome-bookmarks -- node /path/to/chrome-bookmarks-m
 ## セキュリティ
 
 サーバーはループバックにだけ待ち受け、`chrome-extension://` 以外の Origin を拒否する。拡張は `background.js` にあるホワイトリストの `chrome.bookmarks` メソッドしか実行しない。ローカルの別プロセスがポートに接続して MCP サーバーを装うことは原理上可能なので、気になる環境では使わないときに拡張を無効にしておく。
+
+CLI のデーモンは、状態ファイルにあるランダムなトークンを持ち、`Origin` ヘッダーの付いていない要求だけを受け付ける。このため Web ページからは操作できない。
 
 ## ライセンス
 
